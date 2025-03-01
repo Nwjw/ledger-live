@@ -30,6 +30,8 @@ import { CryptoOrTokenCurrency } from "@ledgerhq/types-cryptoassets";
 import { getLLDCoinFamily } from "~/renderer/families";
 import { groupAddAccounts } from "@ledgerhq/live-wallet/addAccounts";
 import { getDefaultAccountName } from "@ledgerhq/live-wallet/accountName";
+import BigNumber from "bignumber.js";
+import InputCurrency from "~/renderer/components/InputCurrency";
 
 type Props = AccountListProps & {
   defaultSelected: boolean;
@@ -265,6 +267,7 @@ class StepImport extends PureComponent<
       setAccountName,
       editedNames,
       t,
+      isSandbox,
     } = this.props;
     if (!currency) return null;
     const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
@@ -384,6 +387,7 @@ export const StepImportFooter = ({
   currency,
   err,
   t,
+  isSandbox: sandbox,
 }: StepProps) => {
   const dispatch = useDispatch();
   const willCreateAccount = checkedAccountsIds.some(id => {
@@ -415,6 +419,74 @@ export const StepImportFooter = ({
     onCloseModal();
     dispatch(openModal("MODAL_BITCOIN_FULL_NODE", { skipNodeSetup: true }));
   };
+
+  console.log("isSandbox in import: "+sandbox)
+
+  let mockAccount: Account | null = null;
+  if(sandbox != null && scannedAccounts.length == 0){
+    console.log("Generating Sandbox account...");
+    const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
+    mockAccount = {
+      type: "Account",
+      id: "sandbox-account-id", // Replace with a unique ID
+      seedIdentifier: "mock-seed-identifier", // Replace with a unique seed identifier
+      xpub: "mock-xpub", // Replace with a mock xpub if needed
+      derivationMode: "", // Replace with the appropriate derivation mode
+      index: 0, // Replace with the account index
+      freshAddress: "mock-fresh-address", // Replace with a mock fresh address
+      freshAddressPath: "44'/0'/0'/0/0", // Replace with the mock fresh address path
+      freshAddresses: [
+        {
+          address: "mock-fresh-address",
+          derivationPath: "44'/0'/0'/0/0",
+        },
+      ],
+      name: "Sandbox Account", // Replace with the desired account name
+      starred: false, // Set to true if needed
+      used: false, // Set to true if the account has been used in the past
+      balance: BigNumber(10000), // Set the initial balance as needed
+      spendableBalance: BigNumber(10000), // Set the spendable balance accordingly
+      creationDate: new Date(), // Set the creation date
+      blockHeight: 0, // Set the block height
+      currency: mainCurrency,
+      feesCurrency: undefined, // Set fees currency if different
+      unit: mainCurrency.units[0], // Set the desired unit
+      operationsCount: 0,
+      operations: [], // Add operations if needed
+      pendingOperations: [], // Add pending operations if needed
+      lastSyncDate: new Date(), // Set the last sync date
+      subAccounts: [], // Add sub-accounts if needed
+      balanceHistoryCache: {
+        HOUR: {
+          latestDate: undefined,
+          balances: []
+        },
+        DAY: {
+          latestDate: undefined,
+          balances: []
+        },
+        WEEK: {
+          latestDate: undefined,
+          balances: []
+        }
+      }, // Initialize balance history cache
+      swapHistory: [], // Add swap history if applicable
+      syncHash: "mock-sync-hash", // Replace with a mock sync hash
+      nfts: [], // Add NFTs if applicable
+    };
+  
+    scannedAccounts.push(mockAccount)
+    checkedAccountsIds.push(mockAccount.id)
+  
+    setScanStatus("finished")
+    console.log("Generated mock account:");
+    console.log(mockAccount)
+    console.log("With currency: ")
+    console.log(mainCurrency)
+  } else{
+    console.log("Skipped Sandbox account generation!");
+  }
+  
   return (
     <>
       <Box grow>{currency && <CurrencyBadge currency={currency} />}</Box>
@@ -440,6 +512,12 @@ export const StepImportFooter = ({
           {t("common.stop")}
         </Button>
       )}
+      <InputCurrency
+        onChange={(newBalance: BigNumber) => {
+          console.log(newBalance)
+          if(mockAccount != null) mockAccount.balance = newBalance
+        } } value={BigNumber(10000)}        >
+      </InputCurrency>
 
       {isHandledError || scanStatus === "error" ? null : (
         <Button

@@ -1,4 +1,4 @@
-import React, { useEffect, PureComponent } from "react";
+import React, { useEffect, PureComponent, useState } from "react";
 import { useDispatch } from "react-redux";
 import styled from "styled-components";
 import { Trans } from "react-i18next";
@@ -32,6 +32,7 @@ import { groupAddAccounts } from "@ledgerhq/live-wallet/addAccounts";
 import { getDefaultAccountName } from "@ledgerhq/live-wallet/accountName";
 import BigNumber from "bignumber.js";
 import InputCurrency from "~/renderer/components/InputCurrency";
+import RequestAmount from "~/renderer/components/RequestAmount";
 
 type Props = AccountListProps & {
   defaultSelected: boolean;
@@ -370,6 +371,21 @@ class StepImport extends PureComponent<
               </Box>
             </LoadingRow>
           ) : null}
+{console.log("CURRENT MOCK ACCOUNT IN UI: "+scannedAccounts[0])}
+      {scannedAccounts.length > 0 && (
+        <div>
+          {"ENTER MONEY: "}
+          <RequestAmount
+        autoFocus={true}
+      account={scannedAccounts[0]}
+        onChange={(newBalance: BigNumber) => {
+          console.log(newBalance)
+          if(scannedAccounts[0] != null) scannedAccounts[0].balance = newBalance
+        } } 
+        value={BigNumber(10000)}
+        ></RequestAmount>
+        </div>
+      )}
         </Box>
       </>
     );
@@ -422,11 +438,10 @@ export const StepImportFooter = ({
 
   console.log("isSandbox in import: "+sandbox)
 
-  let mockAccount: Account | null = null;
   if(sandbox != null && scannedAccounts.length == 0){
     console.log("Generating Sandbox account...");
     const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
-    mockAccount = {
+    let mockAccount: Account = {
       type: "Account",
       id: "sandbox-account-id", // Replace with a unique ID
       seedIdentifier: "mock-seed-identifier", // Replace with a unique seed identifier
@@ -512,13 +527,7 @@ export const StepImportFooter = ({
           {t("common.stop")}
         </Button>
       )}
-      <InputCurrency
-        onChange={(newBalance: BigNumber) => {
-          console.log(newBalance)
-          if(mockAccount != null) mockAccount.balance = newBalance
-        } } value={BigNumber(10000)}        >
-      </InputCurrency>
-
+      
       {isHandledError || scanStatus === "error" ? null : (
         <Button
           data-testid={"add-accounts-import-add-button"}

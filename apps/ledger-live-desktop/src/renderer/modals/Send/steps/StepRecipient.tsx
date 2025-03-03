@@ -71,6 +71,7 @@ const StepRecipient = ({
       ) : (
         <>
           {mainAccount ? <CurrencyDownStatusAlert currencies={[mainAccount.currency]} /> : null}
+          {error ? console.error(error) : null}
           {error ? <ErrorBanner error={error} /> : null}
           {isNFTSend ? (
             <Box flow={1}>

@@ -34,6 +34,7 @@ import StepWarning, { StepWarningFooter } from "./steps/StepWarning";
 import { St, StepId } from "./types";
 import { getLLDCoinFamily } from "~/renderer/families";
 import { getCurrencyConfiguration } from "@ledgerhq/live-common/config/index";
+import { setEnv } from "@ledgerhq/live-env";
 
 export type Data = {
   account?: AccountLike | undefined | null;

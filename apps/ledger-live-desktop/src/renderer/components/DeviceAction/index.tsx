@@ -66,6 +66,7 @@ import {
   AnyMessage,
   DeviceInfo,
   DeviceModelInfo,
+  isSandbox,
 } from "@ledgerhq/types-live";
 import {
   ExchangeRate,
@@ -237,6 +238,13 @@ export const DeviceActionDefaultRendering = <R, H extends States, P>({
     manifestId,
     manifestName,
   } = hookState;
+
+  const { account, parentAccount, status, transaction } = request as unknown as {
+    account: AccountLike;
+    parentAccount: Account | null;
+    status: TransactionStatus;
+    transaction: Transaction;
+  };
 
   const dispatch = useDispatch();
   const preferredDeviceModel = useSelector(preferredDeviceModelSelector);
@@ -587,13 +595,18 @@ export const DeviceActionDefaultRendering = <R, H extends States, P>({
     });
   }
 
-  if (isLoading || (allowOpeningGranted && !appAndVersion)) {
+  console.log("Finished renderConnectYourDevice!"+isLoading+allowOpeningGranted+appAndVersion)
+  
+  // if (!isSandbox(account) && (isLoading || (allowOpeningGranted && !appAndVersion))) {
+    if (isLoading || (allowOpeningGranted && !appAndVersion)) {
     return renderLoading();
   }
+  console.log("Finished renderLoading!")
 
   if (deviceInfo && deviceInfo.isBootloader && onAutoRepair) {
     return renderBootloaderStep({ onAutoRepair });
   }
+  console.log("Finished renderBootloaderStep!")
 
   if (request && device && deviceSignatureRequested) {
     const { account, parentAccount, status, transaction } = request as unknown as {
@@ -616,6 +629,9 @@ export const DeviceActionDefaultRendering = <R, H extends States, P>({
       );
     }
   }
+  console.log("Finished TransactionConfirm!")
+  console.log(request)
+  console.log(signMessageRequested)
 
   if (request && signMessageRequested) {
     const { account, parentAccount } = request as unknown as {
@@ -631,6 +647,7 @@ export const DeviceActionDefaultRendering = <R, H extends States, P>({
       />
     );
   }
+  console.log("Finished signMessageRequested!")
 
   if (typeof deviceStreamingProgress === "number") {
     return renderLoading({
@@ -648,6 +665,7 @@ export const DeviceActionDefaultRendering = <R, H extends States, P>({
         ),
     });
   }
+  console.log("Finished deviceStreamingProgress! "+payload)
 
   if (!payload) {
     return null;
@@ -679,7 +697,20 @@ export default function DeviceAction<R, H extends States, P>({
   action: Action<R, H, P>;
   request: R;
 }): JSX.Element {
-  const device = useSelector(getCurrentDevice);
+  const { account, parentAccount, status, transaction } = request as unknown as {
+    account: AccountLike;
+    parentAccount: Account | null;
+    status: TransactionStatus;
+    transaction: Transaction;
+  };
+
+  const device = isSandbox(account) ? 
+  {
+    deviceId: "",
+    wired: true,
+    modelId: DeviceModelId.nanoS,
+  } // else
+  : useSelector(getCurrentDevice);
   const hookState = action.useHook(device, request);
   const payload = action.mapResult(hookState);
   useKeepScreenAwake(true);

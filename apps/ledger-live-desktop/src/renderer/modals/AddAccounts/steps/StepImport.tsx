@@ -441,9 +441,11 @@ export const StepImportFooter = ({
   if(sandbox != null && scannedAccounts.length == 0){
     console.log("Generating Sandbox account...");
     const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
+    const accountId: string = `mock:1:${mainCurrency.id}:myAccount:`;
+    console.log("AccountID splitted count: "+accountId.split(":").length)
     let mockAccount: Account = {
       type: "Account",
-      id: "sandbox-account-id", // Replace with a unique ID
+      id: accountId, 
       seedIdentifier: "mock-seed-identifier", // Replace with a unique seed identifier
       xpub: "mock-xpub", // Replace with a mock xpub if needed
       derivationMode: "", // Replace with the appropriate derivation mode

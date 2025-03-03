@@ -145,6 +145,11 @@ export type Account = {
   nfts?: ProtoNFT[];
 };
 
+export function isSandbox(account: Account ){
+  if(account == null) return false
+  else return account.id.startsWith("mock") || account.id.startsWith("sandbox")
+};
+
 /**
  * deprecated use TokenAccount instead
  */

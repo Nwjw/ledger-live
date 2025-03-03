@@ -14,7 +14,7 @@ import {
   mergeOps,
   mergeNfts,
 } from "@ledgerhq/coin-framework/bridge/jsHelpers";
-import { Account, Operation, TokenAccount } from "@ledgerhq/types-live";
+import { Account, Operation, TokenAccount, isSandbox } from "@ledgerhq/types-live";
 import { decodeOperationId } from "@ledgerhq/coin-framework/operation";
 import { nftsFromOperations } from "@ledgerhq/coin-framework/nft/helpers";
 import { CryptoCurrency, TokenCurrency } from "@ledgerhq/types-cryptoassets";
@@ -91,7 +91,7 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
   // because they were made in the live
   // Useful for integrations without explorers
   const confirmPendingOperations =
-    initialAccount?.pendingOperations?.map(op => getOperationStatus(currency, op)) || [];
+    initialAccount?.pendingOperations?.map(op => getOperationStatus(currency, op, initialAccount)) || [];
   const confirmedOperations = await Promise.all(confirmPendingOperations).then(ops =>
     ops.filter((op): op is Operation => !!op),
   );
@@ -213,8 +213,34 @@ export const getSubAccountShape = async (
 export const getOperationStatus = async (
   currency: CryptoCurrency,
   op: Operation,
+  account: Account  | null = null,
 ): Promise<Operation | null> => {
   try {
+    if(account && isSandbox(account)){
+      console.log("YES BABY!")
+      console.log(op)
+      return {
+        ...op,
+        transactionSequenceNumber: 0, // Mock
+        blockHash: "", // Mock
+        blockHeight: 0, // Mock
+        date: new Date(), // Mock
+        subOperations: op.subOperations?.map(subOp => ({
+          ...subOp,
+          transactionSequenceNumber: nonce,
+          blockHash,
+          blockHeight,
+          date,
+        })),
+        nftOperations: op.nftOperations?.map(nftOp => ({
+          ...nftOp,
+          transactionSequenceNumber: nonce,
+          blockHash,
+          blockHeight,
+          date,
+        })),
+      } as Operation;
+    }
     const nodeApi = getNodeApi(currency);
     const { blockHeight, blockHash, nonce, gasPrice, gasUsed, value } =
       await nodeApi.getTransaction(currency, op.hash);

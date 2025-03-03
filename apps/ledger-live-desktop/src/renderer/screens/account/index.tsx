@@ -33,7 +33,7 @@ import AccountHeaderActions, { AccountHeaderSettingsButton } from "./AccountHead
 import EmptyStateAccount from "./EmptyStateAccount";
 import TokensList from "./TokensList";
 import { AccountStakeBanner } from "~/renderer/screens/account/AccountStakeBanner";
-import { AccountLike, Account, Operation } from "@ledgerhq/types-live";
+import { AccountLike, Account, Operation, isSandbox } from "@ledgerhq/types-live";
 import { State } from "~/renderer/reducers";
 import { getLLDCoinFamily } from "~/renderer/families";
 import { getCurrencyConfiguration } from "@ledgerhq/live-common/config/index";
@@ -117,6 +117,8 @@ const AccountPage = ({
 
   const filterOperations = useCallback(
     (operation: Operation, account: AccountLike) => {
+      console.log("AYOOOOOOOO: "+operation)
+      if(isSandbox(account)) return true
       // Remove operations linked to address poisoning
       const removeZeroAmountTokenOp =
         shouldFilterTokenOpsZeroAmount && isAddressPoisoningOperation(operation, account);

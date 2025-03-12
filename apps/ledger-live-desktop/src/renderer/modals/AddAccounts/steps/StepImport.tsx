@@ -31,17 +31,13 @@ import { getLLDCoinFamily } from "~/renderer/families";
 import { groupAddAccounts } from "@ledgerhq/live-wallet/addAccounts";
 import { getDefaultAccountName } from "@ledgerhq/live-wallet/accountName";
 import BigNumber from "bignumber.js";
-import InputCurrency from "~/renderer/components/InputCurrency";
 import RequestAmount from "~/renderer/components/RequestAmount";
 
-type Props = AccountListProps & {
-  defaultSelected: boolean;
-  currency: CryptoOrTokenCurrency;
-};
+type Props = AccountListProps & { defaultSelected: boolean; currency: CryptoOrTokenCurrency };
 
 const statusCodeErrorMap = new Map<number, (appName: string) => Error>([
-  [0x6982, appName => new DeviceShouldStayInApp(undefined, { appName })], //refactored ternary in map, this error seems wrong, found like this
-  [0x6700, appName => new DeviceShouldStayInApp(undefined, { appName })], //refactored ternary in map, this error seems wrong, found like this
+  [0x6982, appName => new DeviceShouldStayInApp(undefined, { appName })],
+  [0x6700, appName => new DeviceShouldStayInApp(undefined, { appName })],
   [0x6d09, appName => new DeviceShouldStayInApp(undefined, { appName })],
 ]);
 
@@ -51,6 +47,7 @@ const remapTransportError = (err: unknown, appName: string): Error => {
   const errorFromStatusCode = statusCodeErrorMap.get(statusCode)?.(appName);
   return errorFromStatusCode || (err as Error);
 };
+
 const LoadingRow = styled(Box).attrs(() => ({
   horizontal: true,
   borderRadius: 1,
@@ -62,27 +59,18 @@ const LoadingRow = styled(Box).attrs(() => ({
   height: 48px;
   border: 1px dashed ${p => p.theme.colors.palette.text.shade60};
 `;
+
 const SectionAccounts = ({ defaultSelected, ...rest }: Props) => {
-  // componentDidMount-like effect
   useEffect(() => {
-    if (defaultSelected && rest.onSelectAll) {
-      rest.onSelectAll(rest.accounts);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (defaultSelected && rest.onSelectAll) rest.onSelectAll(rest.accounts);
   }, []);
   return <AccountsList {...rest} />;
 };
-class StepImport extends PureComponent<
-  StepProps,
-  {
-    showAllCreatedAccounts: boolean;
-  }
-> {
+
+class StepImport extends PureComponent<StepProps, { showAllCreatedAccounts: boolean }> {
   constructor(props: StepProps) {
     super(props);
-    this.state = {
-      showAllCreatedAccounts: false,
-    };
+    this.state = { showAllCreatedAccounts: false };
   }
 
   componentDidMount() {
@@ -90,18 +78,10 @@ class StepImport extends PureComponent<
   }
 
   componentDidUpdate(prevProps: StepProps) {
-    const didStartScan =
-      prevProps.scanStatus !== "scanning" && this.props.scanStatus === "scanning";
-    const didFinishScan =
-      prevProps.scanStatus !== "finished" && this.props.scanStatus === "finished";
-
-    // handle case when we click on retry sync
-    if (didStartScan) {
+    if (prevProps.scanStatus !== "scanning" && this.props.scanStatus === "scanning") {
       this.startScanAccountsDevice();
     }
-
-    // handle case when we click on stop sync
-    if (didFinishScan) {
+    if (prevProps.scanStatus !== "finished" && this.props.scanStatus === "finished") {
       this.unsub();
     }
   }
@@ -112,50 +92,30 @@ class StepImport extends PureComponent<
 
   scanSubscription: Subscription | null = null;
   unsub = () => {
-    if (this.scanSubscription) {
-      this.scanSubscription.unsubscribe();
-    }
+    if (this.scanSubscription) this.scanSubscription.unsubscribe();
   };
 
   startScanAccountsDevice() {
     this.unsub();
     try {
-      const { currency, device, setScanStatus, setScannedAccounts, blacklistedTokenIds } =
-        this.props;
+      const { currency, device, setScanStatus, setScannedAccounts, blacklistedTokenIds } = this.props;
       if (!currency || !device) throw new UnresponsiveDeviceError();
       const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
       const bridge = getCurrencyBridge(mainCurrency);
-
-      // will be set to false if an existing account is found
       let onlyNewAccounts = true;
-      const syncConfig = {
-        paginationConfig: {
-          operations: 20,
-        },
-        blacklistedTokenIds,
-      };
+      const syncConfig = { paginationConfig: { operations: 20 }, blacklistedTokenIds };
       this.scanSubscription = concat(
         from(prepareCurrency(mainCurrency)).pipe(ignoreElements()),
-        bridge.scanAccounts({
-          currency: mainCurrency,
-          deviceId: device.deviceId,
-          syncConfig,
-        }),
+        bridge.scanAccounts({ currency: mainCurrency, deviceId: device.deviceId, syncConfig }),
       )
-        .pipe(
-          filter(e => e.type === "discovered"),
-          map(e => e.account),
-          retry(2), //needs to retry to output proper error message
-        )
+        .pipe(filter(e => e.type === "discovered"), map(e => e.account), retry(2))
         .subscribe({
           next: account => {
             const { scannedAccounts, checkedAccountsIds, existingAccounts } = this.props;
             const hasAlreadyBeenScanned = !!scannedAccounts.find(a => account.id === a.id);
             const hasAlreadyBeenImported = !!existingAccounts.find(a => account.id === a.id);
             const isNewAccount = isAccountEmpty(account);
-            if (!isNewAccount && !hasAlreadyBeenImported) {
-              onlyNewAccounts = false;
-            }
+            if (!isNewAccount && !hasAlreadyBeenImported) onlyNewAccounts = false;
             if (!hasAlreadyBeenScanned) {
               setScannedAccounts({
                 scannedAccounts: [...scannedAccounts, account],
@@ -169,19 +129,15 @@ class StepImport extends PureComponent<
               });
             }
           },
-          complete: () => {
-            setScanStatus("finished");
-          },
+          complete: () => setScanStatus("finished"),
           error: err => {
             logger.critical(err);
-            const error = remapTransportError(err, currency.name);
-            setScanStatus("error", error as Error);
+            setScanStatus("error", remapTransportError(err, currency.name));
           },
         });
     } catch (err) {
       logger.critical(err);
-      const { setScanStatus } = this.props;
-      setScanStatus("error", err as Error);
+      this.props.setScanStatus("error", err as Error);
     }
   }
 
@@ -193,30 +149,22 @@ class StepImport extends PureComponent<
 
   handleToggleAccount = (account: Account) => {
     const { checkedAccountsIds, setScannedAccounts } = this.props;
-    const isChecked = checkedAccountsIds.find(id => id === account.id) !== undefined;
-    if (isChecked) {
-      setScannedAccounts({
-        checkedAccountsIds: checkedAccountsIds.filter(id => id !== account.id),
-      });
-    } else {
-      setScannedAccounts({
-        checkedAccountsIds: [...checkedAccountsIds, account.id],
-      });
-    }
+    const isChecked = checkedAccountsIds.includes(account.id);
+    setScannedAccounts({
+      checkedAccountsIds: isChecked
+        ? checkedAccountsIds.filter(id => id !== account.id)
+        : [...checkedAccountsIds, account.id],
+    });
   };
 
   handleSelectAll = (accountsToSelect: Account[]) => {
     const { setScannedAccounts, checkedAccountsIds } = this.props;
-    setScannedAccounts({
-      checkedAccountsIds: uniq(checkedAccountsIds.concat(accountsToSelect.map(a => a.id))),
-    });
+    setScannedAccounts({ checkedAccountsIds: uniq(checkedAccountsIds.concat(accountsToSelect.map(a => a.id))) });
   };
 
   handleUnselectAll = (accountsToRemove: Account[]) => {
     const { setScannedAccounts, checkedAccountsIds } = this.props;
-    setScannedAccounts({
-      checkedAccountsIds: checkedAccountsIds.filter(id => !accountsToRemove.some(a => id === a.id)),
-    });
+    setScannedAccounts({ checkedAccountsIds: checkedAccountsIds.filter(id => !accountsToRemove.some(a => id === a.id)) });
   };
 
   renderLegacyAccountsToggle() {
@@ -226,143 +174,85 @@ class StepImport extends PureComponent<
     return (
       <Box ml="auto" mr={3}>
         <Box color="palette.text.shade60" horizontal alignItems="center">
-          <Text fontSize={2}>
-            <Trans i18nKey="addAccounts.createNewAccount.showAllAddressTypes" />
-          </Text>
-          <ToolTip
-            content={
-              <Trans
-                i18nKey="addAccounts.createNewAccount.showAllAddressTypesTooltip"
-                values={{
-                  family: currency.name,
-                }}
-              />
-            }
-          >
-            <Box mx={1}>
-              <InfoCircle size={14} />
-            </Box>
+          <Text fontSize={2}><Trans i18nKey="addAccounts.createNewAccount.showAllAddressTypes" /></Text>
+          <ToolTip content={<Trans i18nKey="addAccounts.createNewAccount.showAllAddressTypesTooltip" values={{ family: currency.name }} />}>
+            <Box mx={1}><InfoCircle size={14} /></Box>
           </ToolTip>
-          <Switch
-            isChecked={showAllCreatedAccounts}
-            small
-            onChange={() =>
-              this.setState({
-                showAllCreatedAccounts: !showAllCreatedAccounts,
-              })
-            }
-          />
+          <Switch isChecked={showAllCreatedAccounts} small onChange={() => this.setState({ showAllCreatedAccounts: !showAllCreatedAccounts })} />
         </Box>
       </Box>
     );
   }
 
   render() {
-    const {
-      scanStatus,
-      currency,
-      err,
-      scannedAccounts,
-      checkedAccountsIds,
-      existingAccounts,
-      setAccountName,
-      editedNames,
-      t,
-      isSandbox,
-    } = this.props;
+    const { scanStatus, currency, err, scannedAccounts, checkedAccountsIds, existingAccounts, setAccountName, editedNames, t } = this.props;
     if (!currency) return null;
     const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
-
-    // Find accounts that are (scanned && !existing && !used)
     const newAccountSchemes = scannedAccounts
       .filter(a1 => !existingAccounts.map(a2 => a2.id).includes(a1.id) && !a1.used)
       .map(a => a.derivationMode);
-    const preferredNewAccountScheme =
-      newAccountSchemes && newAccountSchemes.length > 0 ? newAccountSchemes[0] : undefined;
+    const preferredNewAccountScheme = newAccountSchemes.length > 0 ? newAccountSchemes[0] : undefined;
+
     if (err) {
-      return (
-        <ErrorDisplay
-          error={err}
-          withExportLogs={err.name !== "SatStackDescriptorNotImported"}
-          supportLink={urls.syncErrors}
-        />
-      );
+      return <ErrorDisplay error={err} withExportLogs={err.name !== "SatStackDescriptorNotImported"} supportLink={urls.syncErrors} />;
     }
-    const currencyName = mainCurrency ? mainCurrency.name : "";
+
+    const currencyName = mainCurrency.name;
     const { sections, alreadyEmptyAccount } = groupAddAccounts(existingAccounts, scannedAccounts, {
       scanning: scanStatus === "scanning",
-      preferredNewAccountSchemes: this.state.showAllCreatedAccounts
-        ? undefined
-        : [preferredNewAccountScheme!],
+      preferredNewAccountSchemes: this.state.showAllCreatedAccounts ? undefined : [preferredNewAccountScheme!],
     });
-    let creatable;
-    const NoAssociatedAccounts = mainCurrency
-      ? getLLDCoinFamily(mainCurrency.family).NoAssociatedAccounts
-      : null;
 
+    let creatable;
+    const NoAssociatedAccounts = getLLDCoinFamily(mainCurrency.family).NoAssociatedAccounts;
     if (alreadyEmptyAccount) {
       creatable = (
         <Trans i18nKey="addAccounts.createNewAccount.noOperationOnLastAccount" parent="div">
-          {" "}
-          <Text ff="Inter|SemiBold" color="palette.text.shade100">
-            {getDefaultAccountName(alreadyEmptyAccount)}
-          </Text>{" "}
+          {" "}<Text ff="Inter|SemiBold" color="palette.text.shade100">{getDefaultAccountName(alreadyEmptyAccount)}</Text>{" "}
         </Trans>
       );
     } else if (NoAssociatedAccounts) {
-      // custom family UI for "no associated accounts"
       creatable = <NoAssociatedAccounts {...this.props} />;
     } else {
       creatable = (
         <Trans i18nKey="addAccounts.createNewAccount.noAccountToCreate" parent="div">
-          {" "}
-          <Text ff="Inter|SemiBold" color="palette.text.shade100">
-            {currencyName}
-          </Text>{" "}
+          {" "}<Text ff="Inter|SemiBold" color="palette.text.shade100">{currencyName}</Text>{" "}
         </Trans>
       );
     }
+
     const emptyTexts = {
-      importable: t("addAccounts.noAccountToImport", {
-        currencyName,
-      }),
+      importable: t("addAccounts.noAccountToImport", { currencyName }),
       creatable,
     };
+
     return (
       <>
         <TrackPage category="AddAccounts" name="Step3" currencyName={currencyName} />
-        <Box data-testid={"add-accounts-step-import-accounts-list"} mt={-4}>
+        <Box data-testid="add-accounts-step-import-accounts-list" mt={-4}>
           {sections.map(({ id, selectable, defaultSelected, data, supportLink }, i) => {
-            const hasMultipleSchemes =
-              id === "creatable" &&
-              newAccountSchemes &&
-              newAccountSchemes.length > 1 &&
-              data.length > 0 &&
-              scanStatus !== "scanning";
+            const hasMultipleSchemes = id === "creatable" && newAccountSchemes.length > 1 && data.length > 0 && scanStatus !== "scanning";
             return (
               <SectionAccounts
                 currency={currency}
                 defaultSelected={defaultSelected}
                 key={id}
-                title={t(`addAccounts.sections.${id}.title`, {
-                  count: data.length,
-                })}
+                title={t(`addAccounts.sections.${id}.title`, { count: data.length })}
                 emptyText={emptyTexts[id as keyof typeof emptyTexts]}
                 accounts={data}
                 autoFocusFirstInput={selectable && i === 0}
                 hideAmount={id === "creatable"}
                 supportLink={supportLink}
-                checkedIds={!selectable ? undefined : checkedAccountsIds}
-                onToggleAccount={!selectable ? undefined : this.handleToggleAccount}
-                setAccountName={!selectable ? undefined : setAccountName}
-                editedNames={!selectable ? {} : editedNames}
-                onSelectAll={!selectable ? undefined : this.handleSelectAll}
-                onUnselectAll={!selectable ? undefined : this.handleUnselectAll}
+                checkedIds={selectable ? checkedAccountsIds : undefined}
+                onToggleAccount={selectable ? this.handleToggleAccount : undefined}
+                setAccountName={selectable ? setAccountName : undefined}
+                editedNames={selectable ? editedNames : {}}
+                onSelectAll={selectable ? this.handleSelectAll : undefined}
+                onUnselectAll={selectable ? this.handleUnselectAll : undefined}
                 ToggleAllComponent={hasMultipleSchemes && this.renderLegacyAccountsToggle()}
               />
             );
           })}
-
           {scanStatus === "scanning" ? (
             <LoadingRow>
               <Spinner color="palette.text.shade60" size={16} />
@@ -371,27 +261,32 @@ class StepImport extends PureComponent<
               </Box>
             </LoadingRow>
           ) : null}
-{console.log("CURRENT MOCK ACCOUNT IN UI: "+scannedAccounts[0])}
-      {scannedAccounts.length > 0 && (
-        <div>
-          {"ENTER MONEY: "}
-          <RequestAmount
-        autoFocus={true}
-      account={scannedAccounts[0]}
-        onChange={(newBalance: BigNumber) => {
-          console.log(newBalance)
-          if(scannedAccounts[0] != null) scannedAccounts[0].balance = newBalance
-        } } 
-        value={BigNumber(10000)}
-        ></RequestAmount>
-        </div>
-      )}
+          {console.log("CURRENT MOCK ACCOUNT IN UI: ", scannedAccounts[0])}
+          {scannedAccounts.length > 0 && (
+            <div>
+              {"ENTER MONEY: "}
+              <RequestAmount
+                autoFocus={true}
+                account={scannedAccounts[0]}
+                onChange={(newBalance: BigNumber) => {
+                  console.log("New Balance:", newBalance.toString());
+                  if (scannedAccounts[0]) {
+                    scannedAccounts[0].balance = newBalance;
+                    scannedAccounts[0].spendableBalance = newBalance;
+                  }
+                }}
+                value={scannedAccounts[0]?.balance || BigNumber(10000)}
+              />
+            </div>
+          )}
         </Box>
       </>
     );
   }
 }
+
 export default StepImport;
+
 export const StepImportFooter = ({
   transitionTo,
   setScanStatus,
@@ -417,126 +312,81 @@ export const StepImportFooter = ({
   const count = checkedAccountsIds.length;
   const willClose = !willCreateAccount && !willAddAccounts;
   const isHandledError = err && err.name === "SatStackDescriptorNotImported";
-  const ctaWording =
-    scanStatus === "scanning"
-      ? t("common.sync.syncing")
-      : willClose
-        ? t("common.close")
-        : t("addAccounts.cta.add", {
-            count,
-          });
-  const onClick = willClose
-    ? onCloseModal
-    : async () => {
-        await onClickAdd();
-        transitionTo("finish");
-      };
+  const ctaWording = scanStatus === "scanning"
+    ? t("common.sync.syncing")
+    : willClose
+      ? t("common.close")
+      : t("addAccounts.cta.add", { count });
+  const onClick = willClose ? onCloseModal : async () => {
+    await onClickAdd();
+    transitionTo("finish");
+  };
   const goFullNode = () => {
     onCloseModal();
     dispatch(openModal("MODAL_BITCOIN_FULL_NODE", { skipNodeSetup: true }));
   };
 
-  console.log("isSandbox in import: "+sandbox)
+  console.log("isSandbox in import: ", sandbox);
 
-  if(sandbox != null && scannedAccounts.length == 0){
+  if (sandbox && scannedAccounts.length === 0) {
     console.log("Generating Sandbox account...");
     const mainCurrency = currency.type === "TokenCurrency" ? currency.parentCurrency : currency;
-    const accountId: string = `mock:1:${mainCurrency.id}:myAccount:`;
-    console.log("AccountID splitted count: "+accountId.split(":").length)
+    const accountId = `mock:1:${mainCurrency.id}:myAccount:`;
     let mockAccount: Account = {
       type: "Account",
-      id: accountId, 
-      seedIdentifier: "mock-seed-identifier", // Replace with a unique seed identifier
-      xpub: "mock-xpub", // Replace with a mock xpub if needed
-      derivationMode: "", // Replace with the appropriate derivation mode
-      index: 0, // Replace with the account index
-      freshAddress: "mock-fresh-address", // Replace with a mock fresh address
-      freshAddressPath: "44'/0'/0'/0/0", // Replace with the mock fresh address path
-      freshAddresses: [
-        {
-          address: "mock-fresh-address",
-          derivationPath: "44'/0'/0'/0/0",
-        },
-      ],
-      name: "Sandbox Account", // Replace with the desired account name
-      starred: false, // Set to true if needed
-      used: false, // Set to true if the account has been used in the past
-      balance: BigNumber(10000), // Set the initial balance as needed
-      spendableBalance: BigNumber(10000), // Set the spendable balance accordingly
-      creationDate: new Date(), // Set the creation date
-      blockHeight: 0, // Set the block height
+      id: accountId,
+      seedIdentifier: "mock-seed-identifier",
+      xpub: "mock-xpub",
+      derivationMode: "",
+      index: 0,
+      freshAddress: "mock-fresh-address",
+      freshAddressPath: "44'/0'/0'/0/0",
+      freshAddresses: [{ address: "mock-fresh-address", derivationPath: "44'/0'/0'/0/0" }],
+      name: "Sandbox Account",
+      starred: false,
+      used: false,
+      balance: BigNumber(10000),
+      spendableBalance: BigNumber(10000),
+      creationDate: new Date(),
+      blockHeight: 0,
       currency: mainCurrency,
-      feesCurrency: undefined, // Set fees currency if different
-      unit: mainCurrency.units[0], // Set the desired unit
+      unit: mainCurrency.units[0],
       operationsCount: 0,
-      operations: [], // Add operations if needed
-      pendingOperations: [], // Add pending operations if needed
-      lastSyncDate: new Date(), // Set the last sync date
-      subAccounts: [], // Add sub-accounts if needed
-      balanceHistoryCache: {
-        HOUR: {
-          latestDate: undefined,
-          balances: []
-        },
-        DAY: {
-          latestDate: undefined,
-          balances: []
-        },
-        WEEK: {
-          latestDate: undefined,
-          balances: []
-        }
-      }, // Initialize balance history cache
-      swapHistory: [], // Add swap history if applicable
-      syncHash: "mock-sync-hash", // Replace with a mock sync hash
-      nfts: [], // Add NFTs if applicable
+      operations: [],
+      pendingOperations: [],
+      lastSyncDate: new Date(),
+      subAccounts: [],
+      balanceHistoryCache: { HOUR: { latestDate: undefined, balances: [] }, DAY: { latestDate: undefined, balances: [] }, WEEK: { latestDate: undefined, balances: [] } },
+      swapHistory: [],
+      syncHash: "mock-sync-hash",
+      nfts: [],
     };
-  
-    scannedAccounts.push(mockAccount)
-    checkedAccountsIds.push(mockAccount.id)
-  
-    setScanStatus("finished")
-    console.log("Generated mock account:");
-    console.log(mockAccount)
-    console.log("With currency: ")
-    console.log(mainCurrency)
-  } else{
+    scannedAccounts.push(mockAccount);
+    checkedAccountsIds.push(mockAccount.id);
+    setScanStatus("finished");
+    console.log("Generated mock account:", mockAccount);
+    console.log("With currency:", mainCurrency);
+  } else {
     console.log("Skipped Sandbox account generation!");
   }
-  
+
   return (
     <>
       <Box grow>{currency && <CurrencyBadge currency={currency} />}</Box>
-      {scanStatus === "error" &&
-        (isHandledError ? (
-          <Button data-testid={"add-accounts-full-node-reconfigure"} primary onClick={goFullNode}>
-            {t("addAccounts.fullNodeConfigure")}
-          </Button>
-        ) : (
-          <>
-            <RetryButton
-              data-testid={"add-accounts-import-retry-button"}
-              primary
-              onClick={() => setScanStatus("scanning")}
-            />
-          </>
-        ))}
+      {scanStatus === "error" && (isHandledError ? (
+        <Button data-testid="add-accounts-full-node-reconfigure" primary onClick={goFullNode}>
+          {t("addAccounts.fullNodeConfigure")}
+        </Button>
+      ) : (
+        <RetryButton data-testid="add-accounts-import-retry-button" primary onClick={() => setScanStatus("scanning")} />
+      ))}
       {scanStatus === "scanning" && (
-        <Button
-          data-testid={"add-accounts-import-stop-button"}
-          onClick={() => setScanStatus("finished")}
-        >
+        <Button data-testid="add-accounts-import-stop-button" onClick={() => setScanStatus("finished")}>
           {t("common.stop")}
         </Button>
       )}
-      
       {isHandledError || scanStatus === "error" ? null : (
-        <Button
-          data-testid={"add-accounts-import-add-button"}
-          primary
-          disabled={scanStatus !== "finished"}
-          onClick={onClick}
-        >
+        <Button data-testid="add-accounts-import-add-button" primary disabled={scanStatus !== "finished"} onClick={onClick}>
           {ctaWording}
         </Button>
       )}

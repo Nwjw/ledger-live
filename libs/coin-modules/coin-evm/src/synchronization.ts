@@ -34,17 +34,25 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
   let latestBlock, balance, blockHeight;
   if (isSandboxMode) {
     latestBlock = { height: 1000 };
-    // Use the last operation's value as the balance if available, else default
-    const userAmount = initialAccount?.operations?.[0]?.value || new BigNumber(1000); // Fallback to 1000
-    balance = userAmount;
+    // Use the account's balance (set by user in StepImport.tsx)
+    balance = initialAccount?.balance || new BigNumber(10000); // Fallback to 10000
     blockHeight = latestBlock.height;
 
+    const accountId = encodeAccountId({
+      type: "js",
+      version: "2",
+      currencyId: currency.id,
+      xpubOrAddress: address,
+      derivationMode,
+    });
+
+    // Generate a single "IN" operation to match the balance
     const lastCoinOperations = [
       {
-        id: `${encodeAccountId({ type: "js", version: "2", currencyId: currency.id, xpubOrAddress: address, derivationMode })}-tx1`,
+        id: `${accountId}-tx1`,
         hash: "mock-tx-hash-1",
         type: "IN",
-        value: userAmount, // Reflects user input
+        value: balance, // Matches user-set balance
         fee: new BigNumber(0),
         date: new Date("2025-03-01"),
         senders: ["sandbox-sender"],
@@ -54,16 +62,11 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
     const lastTokenOperations = [];
     const lastNftOperations = [];
     const lastInternalOperations = [];
-    
-    const accountId = encodeAccountId({
-      type: "js",
-      version: "2",
-      currencyId: currency.id,
-      xpubOrAddress: address,
-      derivationMode,
-    });
+
     const syncHash = getSyncHash(currency, blacklistedTokenIds);
-    const operations = lastCoinOperations; // Initial ops for sandbox
+    const operations = initialAccount?.operations?.length
+      ? mergeOps(initialAccount.operations, lastCoinOperations)
+      : lastCoinOperations;
 
     return {
       type: "Account",
@@ -74,8 +77,8 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
       blockHeight,
       operations,
       operationsCount: operations.length,
-      subAccounts: [],
-      nfts: [],
+      subAccounts: initialAccount?.subAccounts || [],
+      nfts: initialAccount?.nfts || [],
       lastSyncDate: new Date(),
       balanceHistoryCache: generateHistoryFromOperations(operations), // Stabilize graph
     } as Partial<Account>;
@@ -165,7 +168,7 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
     subAccounts,
     nfts,
     lastSyncDate: new Date(),
-    balanceHistoryCache: generateHistoryFromOperations(operations), // For non-sandbox too
+    balanceHistoryCache: generateHistoryFromOperations(operations),
   } as Partial<Account>;
 };
 

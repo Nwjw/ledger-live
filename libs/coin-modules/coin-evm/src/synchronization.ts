@@ -6,6 +6,7 @@ import {
   emptyHistoryCache,
   encodeAccountId,
   encodeTokenAccountId,
+  generateHistoryFromOperations,
 } from "@ledgerhq/coin-framework/account/index";
 import {
   AccountShapeInfo,
@@ -23,24 +24,69 @@ import { ExplorerApi } from "./api/explorer/types";
 import { getExplorerApi } from "./api/explorer";
 import { getNodeApi } from "./api/node/index";
 
-/**
- * Number of blocks that are considered "unsafe" due to a potential reorg.
- * Everything older than this number, should be considered immutable.
- */
 export const SAFE_REORG_THRESHOLD = 80;
 
-/**
- * Main synchronization process
- * Get the main Account and the potential TokenAccounts linked to it
- */
 export const getAccountShape: GetAccountShape<Account> = async (infos, { blacklistedTokenIds }) => {
   const { initialAccount, address, derivationMode, currency } = infos;
   const nodeApi = getNodeApi(currency);
-  const [latestBlock, balance] = await Promise.all([
+  const isSandboxMode = initialAccount && isSandbox(initialAccount);
+
+  let latestBlock, balance, blockHeight;
+  if (isSandboxMode) {
+    latestBlock = { height: 1000 };
+    // Use the last operation's value as the balance if available, else default
+    const userAmount = initialAccount?.operations?.[0]?.value || new BigNumber(1000); // Fallback to 1000
+    balance = userAmount;
+    blockHeight = latestBlock.height;
+
+    const lastCoinOperations = [
+      {
+        id: `${encodeAccountId({ type: "js", version: "2", currencyId: currency.id, xpubOrAddress: address, derivationMode })}-tx1`,
+        hash: "mock-tx-hash-1",
+        type: "IN",
+        value: userAmount, // Reflects user input
+        fee: new BigNumber(0),
+        date: new Date("2025-03-01"),
+        senders: ["sandbox-sender"],
+        recipients: [address],
+      },
+    ];
+    const lastTokenOperations = [];
+    const lastNftOperations = [];
+    const lastInternalOperations = [];
+    
+    const accountId = encodeAccountId({
+      type: "js",
+      version: "2",
+      currencyId: currency.id,
+      xpubOrAddress: address,
+      derivationMode,
+    });
+    const syncHash = getSyncHash(currency, blacklistedTokenIds);
+    const operations = lastCoinOperations; // Initial ops for sandbox
+
+    return {
+      type: "Account",
+      id: accountId,
+      syncHash,
+      balance,
+      spendableBalance: balance,
+      blockHeight,
+      operations,
+      operationsCount: operations.length,
+      subAccounts: [],
+      nfts: [],
+      lastSyncDate: new Date(),
+      balanceHistoryCache: generateHistoryFromOperations(operations), // Stabilize graph
+    } as Partial<Account>;
+  }
+
+  // Non-sandbox logic
+  [latestBlock, balance] = await Promise.all([
     nodeApi.getBlockByHeight(currency, "latest"),
     nodeApi.getCoinBalance(currency, address),
   ]);
-  const blockHeight = latestBlock.height;
+  blockHeight = latestBlock.height;
   const accountId = encodeAccountId({
     type: "js",
     version: "2",
@@ -49,11 +95,8 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
     derivationMode,
   });
   const syncHash = getSyncHash(currency, blacklistedTokenIds);
-  // Due to some changes (as of now: new/updated tokens) we could need to force a sync from 0
   const shouldSyncFromScratch =
     syncHash !== initialAccount?.syncHash || initialAccount === undefined;
-
-  // Get the latest block synchronized to know where to start the new sync
   const latestSyncedHeight = shouldSyncFromScratch ? 0 : initialAccount.blockHeight;
 
   const { lastCoinOperations, lastTokenOperations, lastNftOperations, lastInternalOperations } =
@@ -67,15 +110,12 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
           Math.max(latestSyncedHeight - SAFE_REORG_THRESHOLD, 0),
           blockHeight,
         );
-      } catch (e) /* istanbul ignore next: just logs */ {
-        log("EVM Family", "Failed to get latest transactions", {
-          address,
-          currency,
-          error: e,
-        });
+      } catch (e) {
+        log("EVM Family", "Failed to get latest transactions", { address, currency, error: e });
         throw e;
       }
     })();
+
   const swapHistoryMap = createSwapHistoryMap(initialAccount);
   const newSubAccounts = await getSubAccounts(
     infos,
@@ -86,17 +126,14 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
   );
   const subAccounts = shouldSyncFromScratch
     ? newSubAccounts
-    : mergeSubAccounts(initialAccount, newSubAccounts); // Merging potential new subAccouns while preserving the references
-  // Trying to confirm pending operations that we are sure of
-  // because they were made in the live
-  // Useful for integrations without explorers
+    : mergeSubAccounts(initialAccount, newSubAccounts);
+
   const confirmPendingOperations =
     initialAccount?.pendingOperations?.map(op => getOperationStatus(currency, op, initialAccount)) || [];
   const confirmedOperations = await Promise.all(confirmPendingOperations).then(ops =>
     ops.filter((op): op is Operation => !!op),
   );
 
-  // Coin operations with children ops like token & nft ops attached to it
   const lastCoinOperationsWithAttachements = attachOperations(
     lastCoinOperations,
     lastTokenOperations,
@@ -111,14 +148,8 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
       : mergeOps(initialAccount?.operations, newOperations);
   const operationsWithPendings = mergeOps(operations, initialAccount?.pendingOperations || []);
 
-  // Merging potential new nfts while preserving the references.
-  //
-  // ⚠️ NFTs are aggregated manually to get the account "balance" for each of them.
-  // Because of that, we're not creating NFTs in an incremental way,
-  // but always creating them based on *all* operations.
   const nfts = mergeNfts(
     initialAccount?.nfts || [],
-    // Adding pendings ops to this to temporarly remove an NFT from an account if actively being transfered
     nftsFromOperations(operationsWithPendings),
   ).filter(nft => nft.amount.gt(0));
 
@@ -134,6 +165,7 @@ export const getAccountShape: GetAccountShape<Account> = async (infos, { blackli
     subAccounts,
     nfts,
     lastSyncDate: new Date(),
+    balanceHistoryCache: generateHistoryFromOperations(operations), // For non-sandbox too
   } as Partial<Account>;
 };
 

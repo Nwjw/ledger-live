@@ -34,7 +34,6 @@ import StepWarning, { StepWarningFooter } from "./steps/StepWarning";
 import { St, StepId } from "./types";
 import { getLLDCoinFamily } from "~/renderer/families";
 import { getCurrencyConfiguration } from "@ledgerhq/live-common/config/index";
-import { setEnv } from "@ledgerhq/live-env";
 
 export type Data = {
   account?: AccountLike | undefined | null;
@@ -53,84 +52,42 @@ export type Data = {
   stepId?: StepId;
 };
 
-type OwnProps = {
-  stepId: StepId;
-  onChangeStepId: (a: StepId) => void;
-  onClose?: () => void | undefined;
-  params: Data;
-};
-type StateProps = {
-  t: TFunction;
-  device: Device | undefined | null;
-  accounts: Account[];
-  closeModal: (a: string) => void;
-  openModal: (b: string, a: unknown) => void;
-  updateAccountWithUpdater: (b: string, a: (a: Account) => Account) => void;
-};
-type Props = {} & OwnProps & StateProps;
+type OwnProps = { stepId: StepId; onChangeStepId: (a: StepId) => void; onClose?: () => void; params: Data };
+type StateProps = { t: TFunction; device: Device | null; accounts: Account[]; closeModal: (a: string) => void; openModal: (b: string, a: unknown) => void; updateAccountWithUpdater: (b: string, a: (a: Account) => Account) => void };
+type Props = OwnProps & StateProps;
+
 const createSteps = (disableBacks: string[] = [], shouldSkipAmount = false): St[] => {
   const steps: Array<St | undefined> = [
-    {
-      id: "warning",
-      excludeFromBreadcrumb: true,
-      component: StepWarning,
-      footer: StepWarningFooter,
+    { id: "warning", excludeFromBreadcrumb: true, component: StepWarning, footer: StepWarningFooter },
+    { id: "recipient", label: <Trans i18nKey="send.steps.recipient.title" />, component: StepRecipient, footer: StepRecipientFooter },
+    shouldSkipAmount ? undefined : {
+      id: "amount",
+      label: <Trans i18nKey="send.steps.amount.title" />,
+      component: StepAmount,
+      footer: StepAmountFooter,
+      onBack: !disableBacks.includes("amount") ? ({ transitionTo }) => transitionTo("recipient") : null,
     },
-    {
-      id: "recipient",
-      label: <Trans i18nKey="send.steps.recipient.title" />,
-      component: StepRecipient,
-      footer: StepRecipientFooter,
-    },
-    shouldSkipAmount
-      ? undefined
-      : {
-          id: "amount",
-          label: <Trans i18nKey="send.steps.amount.title" />,
-          component: StepAmount,
-          footer: StepAmountFooter,
-          onBack: !disableBacks.includes("amount")
-            ? ({ transitionTo }) => transitionTo("recipient")
-            : null,
-        },
     {
       id: "summary",
       label: <Trans i18nKey="send.steps.summary.title" />,
       component: StepSummary,
       footer: StepSummaryFooter,
-      onBack: !disableBacks.includes("transaction")
-        ? ({ transitionTo }) => transitionTo("amount")
-        : null,
+      onBack: !disableBacks.includes("transaction") ? ({ transitionTo }) => transitionTo("amount") : null,
     },
     {
       id: "device",
       label: <Trans i18nKey="send.steps.device.title" />,
       component: StepConnectDevice,
-      onBack: !disableBacks.includes("device")
-        ? ({ transitionTo }) => transitionTo("summary")
-        : null,
+      onBack: !disableBacks.includes("device") ? ({ transitionTo }) => transitionTo("summary") : null,
     },
-    {
-      id: "confirmation",
-      label: <Trans i18nKey="send.steps.confirmation.title" />,
-      excludeFromBreadcrumb: true,
-      component: StepConfirmation,
-      footer: StepConfirmationFooter,
-      onBack: null,
-    },
+    { id: "confirmation", label: <Trans i18nKey="send.steps.confirmation.title" />, excludeFromBreadcrumb: true, component: StepConfirmation, footer: StepConfirmationFooter, onBack: null },
   ];
-
   return steps.filter(Boolean) as St[];
 };
-const mapStateToProps = createStructuredSelector({
-  device: getCurrentDevice,
-  accounts: accountsSelector,
-});
-const mapDispatchToProps = {
-  closeModal,
-  openModal,
-  updateAccountWithUpdater,
-};
+
+const mapStateToProps = createStructuredSelector({ device: getCurrentDevice, accounts: accountsSelector });
+const mapDispatchToProps = { closeModal, openModal, updateAccountWithUpdater };
+
 const Body = ({
   t,
   device,
@@ -147,40 +104,23 @@ const Body = ({
   const isNFTSend = !!params.isNFTSend;
   const walletConnectProxy = !!params.walletConnectProxy;
 
-  // initial values might coming from deeplink
   const [maybeAmount, setMaybeAmount] = useState(() => params.amount || null);
   const [maybeRecipient, setMaybeRecipient] = useState(() => params.recipient || null);
   const maybeNFTId = useMemo(() => params.nftId, [params.nftId]);
   const maybeNFTCollection = useMemo(() => params.nftCollection, [params.nftCollection]);
-  const onResetMaybeAmount = useCallback(() => {
-    setMaybeAmount(null);
-  }, [setMaybeAmount]);
-  const onResetMaybeRecipient = useCallback(() => {
-    setMaybeRecipient(null);
-  }, [setMaybeRecipient]);
+  const onResetMaybeAmount = useCallback(() => setMaybeAmount(null), []);
+  const onResetMaybeRecipient = useCallback(() => setMaybeRecipient(null), []);
 
-  // if it's an ERC721 transfer, it has no amount and since the
-  // "amount" step is also showing the gas selection options,
-  // having no quantity + no gas options should mean
-  // skipping the amount step completely
   const shouldSkipAmount = useMemo(() => {
     if (!isNFTSend) return false;
-
     const parentAccount = params?.parentAccount;
     const account = params?.account || accounts[0];
-
     const mainAccount = getMainAccount(account, parentAccount);
     const { currency } = mainAccount;
-
-    // FIXME to remove after ethereum -> evm migration
     if (currency.family !== "evm") return false;
-
-    const { contract, tokenId } = maybeNFTId
-      ? decodeNftId(maybeNFTId)
-      : ({} as Record<string, undefined>);
+    const { contract, tokenId } = maybeNFTId ? decodeNftId(maybeNFTId) : ({} as Record<string, undefined>);
     const nft = getNFT(contract, tokenId, mainAccount.nfts);
     const nftCapabilities = getNftCapabilities(nft);
-
     try {
       const config = getCurrencyConfiguration(currency);
       return !config?.gasTracker && !nftCapabilities.hasQuantity;
@@ -207,31 +147,28 @@ const Body = ({
     return {
       account,
       parentAccount,
-      transaction: params.transaction,
+      transaction: params.transaction || { amount: maybeAmount || new BigNumber(0), recipient: maybeRecipient || "" },
     };
   });
 
   invariant(account, "account required");
 
-  // make sure step id is in sync
   useEffect(() => {
     const stepId = params?.startWithWarning ? "warning" : null;
     if (stepId) onChangeStepId(stepId);
   }, [onChangeStepId, params]);
+
   const [optimisticOperation, setOptimisticOperation] = useState<Operation | null>(null);
   const [transactionError, setTransactionError] = useState<Error | null>(null);
   const [signed, setSigned] = useState(false);
   const currency = account ? getAccountCurrency(account) : undefined;
   const currencyName = currency ? currency.name : undefined;
   const mainAccount = getMainAccount(account, parentAccount);
-  const handleCloseModal = useCallback(() => {
-    closeModal("MODAL_SEND");
-  }, [closeModal]);
+
+  const handleCloseModal = useCallback(() => closeModal("MODAL_SEND"), [closeModal]);
   const handleChangeAccount = useCallback(
     (nextAccount: AccountLike, nextParentAccount?: Account | null) => {
-      if (account !== nextAccount) {
-        setAccount(nextAccount, nextParentAccount);
-      }
+      if (account !== nextAccount) setAccount(nextAccount, nextParentAccount);
     },
     [account, setAccount],
   );
@@ -240,19 +177,13 @@ const Body = ({
       setAccount(mainAccount, undefined);
       const specific = getLLDCoinFamily(mainAccount.currency.family);
       if (!specific.nft || !transaction) return;
-
       const bridge = getAccountBridge(mainAccount);
       const standard = nextNft.standard.toLowerCase() as NFTStandard;
       const newTransaction = specific.nft.injectNftIntoTransaction(
         transaction,
-        {
-          contract: nextNft.contract,
-          tokenId: nextNft.tokenId,
-          quantity: new BigNumber(1),
-        },
+        { contract: nextNft.contract, tokenId: nextNft.tokenId, quantity: new BigNumber(1) },
         standard,
       );
-
       setTransaction(bridge?.updateTransaction(transaction, newTransaction));
     },
     [mainAccount, setAccount, setTransaction, transaction],
@@ -261,15 +192,11 @@ const Body = ({
     (nextQuantity: string) => {
       const specific = getLLDCoinFamily(mainAccount.currency.family);
       if (!specific.nft || !transaction) return;
-
       const bridge = getAccountBridge(mainAccount);
       const newQuantity = new BigNumber(nextQuantity.replace(/\D/g, "") || 0);
       const { quantity } = specific.nft.getNftTransactionProperties(transaction);
-
       if (!transaction || !quantity?.eq(newQuantity)) {
-        const newTransaction = specific.nft.injectNftIntoTransaction(transaction, {
-          quantity: newQuantity,
-        });
+        const newTransaction = specific.nft.injectNftIntoTransaction(transaction, { quantity: newQuantity });
         setTransaction(bridge.updateTransaction(transaction, newTransaction));
       }
     },
@@ -281,9 +208,7 @@ const Body = ({
     setSigned(false);
   }, []);
   const handleTransactionError = useCallback((error: Error) => {
-    if (!(error instanceof UserRefusedOnDevice)) {
-      logger.critical(error);
-    }
+    if (!(error instanceof UserRefusedOnDevice)) logger.critical(error);
     setTransactionError(error);
   }, []);
   const handleOperationBroadcasted = useCallback(
@@ -295,27 +220,20 @@ const Body = ({
       );
       setOptimisticOperation(optimisticOperation);
       setTransactionError(null);
+      console.log("Updated account operations:", mainAccount.operations);
+      console.log("Updated balance:", mainAccount.balance.toString());
     },
     [account, parentAccount, updateAccountWithUpdater],
   );
-  const handleStepChange = useCallback(
-    (e: { id: StepId }) => onChangeStepId(e.id),
-    [onChangeStepId],
-  );
+  const handleStepChange = useCallback((e: { id: StepId }) => onChangeStepId(e.id), [onChangeStepId]);
+
   const errorSteps = [];
-  if (transactionError) {
-    errorSteps.push(3);
-  } else if (bridgeError) {
-    errorSteps.push(0);
-  }
+  if (transactionError) errorSteps.push(3);
+  else if (bridgeError) errorSteps.push(0);
   const error = transactionError || bridgeError;
+
   const stepperProps = {
-    title:
-      stepId === "warning"
-        ? t("common.information")
-        : isNFTSend
-          ? t("send.titleNft")
-          : t("send.title"),
+    title: stepId === "warning" ? t("common.information") : isNFTSend ? t("send.titleNft") : t("send.title"),
     stepId,
     steps,
     errorSteps,
@@ -357,9 +275,7 @@ const Body = ({
     shouldSkipAmount,
   };
 
-  if (!status) {
-    return null;
-  }
+  if (!status) return null;
 
   return (
     <Stepper {...stepperProps}>
@@ -369,8 +285,5 @@ const Body = ({
   );
 };
 
-const m = compose(
-  connect(mapStateToProps, mapDispatchToProps),
-  withTranslation(),
-)(Body) as React.ComponentType<OwnProps>;
+const m = compose(connect(mapStateToProps, mapDispatchToProps), withTranslation())(Body) as React.ComponentType<OwnProps>;
 export default m;
